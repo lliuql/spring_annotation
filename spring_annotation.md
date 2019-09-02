@@ -591,7 +591,7 @@ public void test1() {
   ```java
 @Configuration
   public class MainConfigOfLifeCycle {
-	
+			
   	//@Scope("prototype")
   	@Bean(initMethod="init",destroyMethod="detory")
   	public Car car(){
@@ -601,8 +601,10 @@ public void test1() {
   }
 
   public class Car {
-	
+			
   	public Car(){
+  ```
+
 		System.out.println("car constructor...");
   	}
   	
@@ -613,7 +615,7 @@ public void test1() {
   	public void detory(){
   		System.out.println("car ... detory...");
   	}
-  
+
   }
   ```
   
@@ -631,7 +633,7 @@ public void test1() {
   	void destroy() throws Exception;
   }
   ```
-  
+
   
 
   ```java
@@ -662,17 +664,17 @@ public void test1() {
   
   }
   ```
+
   
+
   
+
   
-  
-  
-  
-  
+
   3）、可以使用JSR250；
            @PostConstruct：在bean创建完成并且属性赋值完成；来执行初始化方法
            @PreDestroy：在容器销毁bean之前通知我们进行清理工作
-  
+
   ```
   public class Dog {
        
@@ -698,12 +700,12 @@ public void test1() {
      }
   }
   ```
+
   
-  
-  
+
    4）、BeanPostProcessor【interface】：bean的后置处理器；
            在bean初始化前后进行一些处理工作；
-  
+
   ```
   public interface BeanPostProcessor {
   	// 在初始化之前工作
@@ -713,9 +715,10 @@ public void test1() {
   
   }
   ```
-  
+
   ```java
-  public class MyBeanPostProcessor implements BeanPostProcessor {
+@Conponent  
+public class MyBeanPostProcessor implements BeanPostProcessor {
   
      @Override
      public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
@@ -731,5 +734,405 @@ public void test1() {
   
   }
   ```
+
   
-  
+
+BeanPostProcessor是生命周期函数最底层的方法：
+
+```
+bean赋值，注入其他组件，@Autowired，生命周期注解功能，@Async,等等都是依赖 BeanPostProcessor完成的;
+```
+
+
+
+
+
+## 组件赋值
+
+### @Value
+
+
+
+```
+public class Person {
+   
+   //使用@Value赋值；
+   //1、基本数值
+   //2、可以写SpEL； #{}
+   //3、可以写${}；取出配置文件【properties】中的值（在运行环境变量里面的值）
+   
+   @Value("张三")
+   private String name;
+   @Value("#{20-2}")
+   private Integer age;
+   
+   // 需要用@propertySource 加载properties
+   @Value("${person.nickName}") 
+   private String nickName;
+}
+   
+```
+
+
+
+### @PropertySource 加载properties
+
+```
+//使用@PropertySource读取外部配置文件中的k/v保存到运行的环境变量中;加载完外部的配置文件以后使用${}取出配置文件的值
+@PropertySource(value={"classpath:/person.properties"})
+@Configuration
+public class MainConfigOfPropertyValues {
+   
+   @Bean
+   public Person person(){
+      return new Person();
+   }
+
+}
+```
+
+```
+// 从环境变量中取出 properties 加载的k/v值
+	AnnotationConfigApplicationContext applicationContext = new AnnotationConfigApplicationContext(MainConfigOfPropertyValues.class);
+
+ConfigurableEnvironment environment = applicationContext.getEnvironment();
+String property = environment.getProperty("person.nickName");
+```
+
+
+
+@PropertySource源码
+
+```
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Repeatable(PropertySources.class) // 可以配置多个@PropertySource
+public @interface PropertySource {
+
+   String name() default "";
+
+   String[] value();
+
+   boolean ignoreResourceNotFound() default false;
+
+   String encoding() default "";
+
+   Class<? extends PropertySourceFactory> factory() default PropertySourceFactory.class;
+
+}
+```
+
+
+
+## 自动注入
+
+### @Autowired 自动注入
+
+1）、默认优先按照类型去容器中找对应的组件:applicationContext.getBean(BookDao.class);找到就赋值
+2）、如果找到多个相同类型的组件，再将属性的名称作为组件的id去容器中查找
+					applicationContext.getBean("bookDao2")
+
+```java
+BookService{
+    @Autowired
+    BookDao  bookDao2; 
+    // 会根据 属性名bookDao2去容器中找
+    // 	applicationContext.getBean("bookDao2")
+}
+
+@Configuration
+public class MainConfig {
+   
+   @Bean
+   public BookDao bookDao(){
+      return new BookDao();
+   }
+    @Bean（"bookDao2"）
+   public BookDao bookDao2(){
+      return new BookDao();
+   }
+
+}
+```
+
+3）、@Qualifier("bookDao")：使用@Qualifier指定需要装配的组件的id，而不是使用属性名
+
+4）、自动装配默认一定要将属性赋值好，没有就会报错；
+	可以使用@Autowired(required=false);
+
+```
+@Service
+public class BookService {
+   
+   @Qualifier("bookDao")
+   @Autowired(required=false)
+   private BookDao bookDao;
+
+}
+```
+
+
+5）、@Primary：让Spring进行自动装配的时候，默认使用首选的bean；
+		也可以继续使用@Qualifier指定需要装配的bean的名字
+
+```java
+BookService{
+    @Autowired
+    BookDao  bookDao2; 
+	// 由于有@Parimay 这里注入的是bookDao
+}
+
+@Configuration
+public class MainConfig {
+   
+   @Primary
+   @Bean
+   public BookDao bookDao(){
+      return new BookDao();
+   }
+    @Bean（"bookDao2"）
+   public BookDao bookDao2(){
+      return new BookDao();
+   }
+
+}
+```
+
+
+
+### JSR 规范 @Resource 与 @Inject 注入
+
+Spring还支持使用@Resource(JSR250)和@Inject(JSR330)[java规范的注解]
+#### @Resource: 
+
+可以和@Autowired一样实现自动装配功能；默认是按照组件名称进行装配的；
+没有能支持@Primary功能没有支持@Autowired（reqiured=false）;
+
+####  @Inject:
+需要导入javax.inject的包，和Autowired的功能一样。没有required=false的功能；
+
+<strong>·@Autowired:Spring定义的； @Resource、@Inject都是java规范</strong>
+	
+
+### 自动注入总结： @Autowired 牛逼，就用 @Autowired
+
+自动注入实现的原理
+
+​	AutowiredAnnotationBeanPostProcessor:解析完成自动装配功能；    
+
+### 自动配置位置
+
+@Autowired:构造器，参数，方法，属性；都是从容器中获取参数组件的值
+
+ 1）、[标注在方法位置]：@Bean+方法参数；参数从容器中获取;默认不写@Autowired效果是一样的；都能自动装配
+
+```java
+	@Autowired 
+	public void setCar(Car car) {
+		this.car = car;
+	}
+```
+
+
+
+2）、[标在构造器上]：如果组件只有一个有参构造器，这个有参构造器的@Autowired可以省略，参数位置的组件还是可以自动从容器中获取
+
+```java
+@Component
+public class Boss {
+	
+	private Car car;
+	
+	//构造器要用的组件，都是从容器中获取, 如果只有一个有参构造器@Autowired可以省略
+    @Autowired
+	public Boss(Car car){
+		this.car = car;
+		System.out.println("Boss...有参构造器");
+	}
+}
+```
+
+
+
+3）、放在参数位置：
+
+@Component
+public class Boss {
+	
+	@Component
+	public class Boss {
+		
+		private Car car;
+		
+		//构造器要用的组件，都是从容器中获取, 如果只有一个有参构造器@Autowired可以省略
+		public Boss(@Autowired Car car){
+			this.car = car;
+			System.out.println("Boss...有参构造器");
+		}
+	}
+4）、@Bean方法参数的bean从容器中去
+
+```java
+// 这里方法的car 可以从容器中取
+@Bean
+public Color color(Car car){
+    Color color = new Color();
+    color.setCar(car);
+    return color;
+}
+```
+
+
+
+### 自定义组件获取Spring底层组件
+
+自定义组件想要使用Spring容器底层的一些组件（ApplicationContext，BeanFactory，xxx）；
+
+自定义组件实现xxxAware；在创建对象的时候，会调用接口规定的方法注入相关组件；Aware；
+
+把Spring底层一些组件注入到自定义的Bean中；
+
+ xxxAware：功能使用xxxProcessor；
+
+ 	ApplicationContextAware==》ApplicationContextAwareProcessor；
+
+``` java
+@Component
+public class Red implements ApplicationContextAware,BeanNameAware,EmbeddedValueResolverAware {
+	
+	private ApplicationContext applicationContext;
+
+	@Override
+	public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+		System.out.println("传入的ioc："+applicationContext);
+		this.applicationContext = applicationContext;
+	}
+
+	@Override
+	public void setBeanName(String name) {
+		System.out.println("当前bean的名字："+name);
+	}
+
+	@Override
+	public void setEmbeddedValueResolver(StringValueResolver resolver) {
+		String resolveStringValue = resolver.resolveStringValue("你好 ${os.name} 我是 #{20*18}");
+		System.out.println("解析的字符串："+resolveStringValue);
+	}
+
+
+
+
+}
+```
+
+
+
+### @Profile
+
+```
+/**
+ * Profile：
+ *        Spring为我们提供的可以根据当前环境，动态的激活和切换一系列组件的功能；
+ * 
+ * 开发环境、测试环境、生产环境；
+ * 数据源：(/A)(/B)(/C)；
+ * 
+ * 
+ * @Profile：指定组件在哪个环境的情况下才能被注册到容器中，不指定，任何环境下都能注册这个组件
+ * 
+ * 1）、加了环境标识的bean，只有这个环境被激活的时候才能注册到容器中。默认是default环境
+ * 2）、写在配置类上，只有是指定的环境的时候，整个配置类里面的所有配置才能开始生效
+ * 3）、没有标注环境标识的bean在，任何环境下都是加载的；
+ */
+
+@PropertySource("classpath:/dbconfig.properties")
+@Configuration
+public class MainConfigOfProfile implements EmbeddedValueResolverAware{
+   
+   @Value("${db.user}")
+   private String user;
+   
+   private StringValueResolver valueResolver;
+   
+   private String  driverClass;
+   
+   
+   @Bean
+   public Yellow yellow(){
+      return new Yellow();
+   }
+   
+   @Profile("test")
+   @Bean("testDataSource")
+   public DataSource dataSourceTest(@Value("${db.password}")String pwd) throws Exception{
+      ComboPooledDataSource dataSource = new ComboPooledDataSource();
+      dataSource.setUser(user);
+      dataSource.setPassword(pwd);
+      dataSource.setJdbcUrl("jdbc:mysql://localhost:3306/test");
+      dataSource.setDriverClass(driverClass);
+      return dataSource;
+   }
+   
+   
+   @Profile("dev")
+   @Bean("devDataSource")
+   public DataSource dataSourceDev(@Value("${db.password}")String pwd) throws Exception{
+      ComboPooledDataSource dataSource = new ComboPooledDataSource();
+      dataSource.setUser(user);
+      dataSource.setPassword(pwd);
+      dataSource.setJdbcUrl("jdbc:mysql://localhost:3306/ssm_crud");
+      dataSource.setDriverClass(driverClass);
+      return dataSource;
+   }
+   
+   @Profile("prod")
+   @Bean("prodDataSource")
+   public DataSource dataSourceProd(@Value("${db.password}")String pwd) throws Exception{
+      ComboPooledDataSource dataSource = new ComboPooledDataSource();
+      dataSource.setUser(user);
+      dataSource.setPassword(pwd);
+      dataSource.setJdbcUrl("jdbc:mysql://localhost:3306/scw_0515");
+      
+      dataSource.setDriverClass(driverClass);
+      return dataSource;
+   }
+
+   @Override
+   public void setEmbeddedValueResolver(StringValueResolver resolver) {
+      // TODO Auto-generated method stub
+      this.valueResolver = resolver;
+      driverClass = valueResolver.resolveStringValue("${db.driverClass}");
+   }
+
+}
+```
+
+激活Profile
+
+```
+//1、使用命令行动态参数: 在虚拟机参数位置加载 -Dspring.profiles.active=test
+//2、代码的方式激活某种环境；
+@Test
+public void test01(){
+   AnnotationConfigApplicationContext applicationContext = 
+         new AnnotationConfigApplicationContext();
+   //1、创建一个applicationContext
+   //2、设置需要激活的环境
+   applicationContext.getEnvironment().setActiveProfiles("dev");
+   //3、注册主配置类
+   applicationContext.register(MainConfigOfProfile.class);
+   //4、启动刷新容器
+   applicationContext.refresh();
+   
+   
+   String[] namesForType = applicationContext.getBeanNamesForType(DataSource.class);
+   for (String string : namesForType) {
+      System.out.println(string);
+   }
+   
+   Yellow bean = applicationContext.getBean(Yellow.class);
+   System.out.println(bean);
+   applicationContext.close();
+}
+```
