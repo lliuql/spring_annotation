@@ -1,4 +1,4 @@
-# Spring 注解驱动开发
+Spring 注解驱动开发
 
 
 
@@ -120,7 +120,7 @@
                            ② MyAnnotation的Target和Retention等元注解与MyAnnotations相同。
 
                        例子：
-                  
+                               
                        ![1567345145708](./images/1567345145708.png)
                        
      - 类型注解：
@@ -480,3 +480,256 @@ public class MyImportBeanDefinitionRegistrar implements ImportBeanDefinitionRegi
 
 }
 ```
+
+### FactoryBean
+
+ 1）、默认获取到的是工厂bean调用getObject创建的对象
+
+2）、要获取工厂Bean本身，我们需要给id前面加一个&colorFactoryBean
+
+```java
+public interface FactoryBean<T> {
+
+	T getObject() throws Exception;
+
+	Class<?> getObjectType();
+
+	boolean isSingleton();
+
+}
+
+```
+
+
+
+使用：第一步创建工厂bean
+
+```java
+//创建一个Spring定义的FactoryBean
+public class ColorFactoryBean implements FactoryBean<Color> {
+
+	//返回一个Color对象，这个对象会添加到容器中
+	@Override
+	public Color getObject() throws Exception {
+		System.out.println("ColorFactoryBean...getObject...");
+		return new Color();
+	}
+
+	@Override
+	public Class<?> getObjectType() {
+		return Color.class;
+	}
+
+	//是单例？
+	//true：这个bean是单实例，在容器中保存一份
+	//false：多实例，每次获取都会创建一个新的bean；
+	@Override
+	public boolean isSingleton() {
+		return false;
+	}
+
+}
+```
+
+
+
+第二步：配置文件上使用
+
+```
+@Configuration
+public class MainConfig2 {
+	@Bean
+	public ColorFactoryBean colorFactoryBean(){
+		return new ColorFactoryBean();
+	}
+}
+```
+
+
+
+第三步：获取对象使用
+
+```
+@Test
+public void test1() {
+    //工厂Bean获取的是调用getObject创建的对象
+    Object bean2 = applicationContext.getBean("colorFactoryBean");
+    Object bean3 = applicationContext.getBean("colorFactoryBean");
+    System.out.println("bean的类型："+bean2.getClass());
+    System.out.println(bean2 == bean3);
+	
+	// 获取工厂本身
+    Object bean4 = applicationContext.getBean("&colorFactoryBean");
+    System.out.println(bean4.getClass());
+}
+
+```
+
+
+
+
+
+## bean 生命周期注解
+
+- bean的生命周期：  bean创建---初始化----销毁的过程
+
+  - 创建时机：
+    -  单实例：在容器启动的时候创建对象（可以配置懒加载修改）
+    - 多实例：在每次获取的时候创建对象
+  - 销毁时机：
+     *        单实例：容器关闭的时候
+     *        多实例：容器不会管理这个bean；容器不会调用销毁方法；
+
+  
+
+- 自定义初始化和销毁方法：
+
+  1）、指定初始化和销毁方法；
+
+   	通过@Bean指定init-method和destroy-method；
+
+  ```java
+@Configuration
+  public class MainConfigOfLifeCycle {
+	
+  	//@Scope("prototype")
+  	@Bean(initMethod="init",destroyMethod="detory")
+  	public Car car(){
+  		return new Car();
+  	}
+  
+  }
+
+  public class Car {
+	
+  	public Car(){
+		System.out.println("car constructor...");
+  	}
+  	
+  	public void init(){
+  		System.out.println("car ... init...");
+  	}
+  	
+  	public void detory(){
+  		System.out.println("car ... detory...");
+  	}
+  
+  }
+  ```
+  
+  
+  
+  
+  
+  2）、通过让Bean实现InitializingBean（定义初始化逻辑），DisposableBean（定义销毁逻辑）;
+  
+  ```java
+  public interface InitializingBean {
+  	void afterPropertiesSet() throws Exception;
+  }
+  public interface DisposableBean {
+  	void destroy() throws Exception;
+  }
+  ```
+  
+  
+
+  ```java
+  public class Cat implements InitializingBean,DisposableBean {
+  	
+  	public Cat(){
+  		System.out.println("cat constructor...");
+  	}
+  
+  	@Override
+  	public void destroy() throws Exception {
+  		System.out.println("cat...destroy...");
+  	}
+  
+  	@Override
+  	public void afterPropertiesSet() throws Exception {
+  		System.out.println("cat...afterPropertiesSet...");
+  	}
+  }
+  
+  @Configuration
+  public class MainConfigOfLifeCycle {
+  	
+  	@Bean
+  	public Car car(){
+  		return new Car();
+  	}
+  
+  }
+  ```
+  
+  
+  
+  
+  
+  
+  
+  3）、可以使用JSR250；
+           @PostConstruct：在bean创建完成并且属性赋值完成；来执行初始化方法
+           @PreDestroy：在容器销毁bean之前通知我们进行清理工作
+  
+  ```
+  public class Dog {
+       
+     public Dog(){
+        System.out.println("dog constructor...");
+     }
+     
+     //对象创建并赋值之后调用
+     @PostConstruct
+     public void init(){
+        System.out.println("Dog....@PostConstruct...");
+     }
+     
+     //容器移除对象之前
+     @PreDestroy
+     public void detory(){
+        System.out.println("Dog....@PreDestroy...");
+     }
+  
+     @Override
+     public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+        this.applicationContext = applicationContext;
+     }
+  }
+  ```
+  
+  
+  
+   4）、BeanPostProcessor【interface】：bean的后置处理器；
+           在bean初始化前后进行一些处理工作；
+  
+  ```
+  public interface BeanPostProcessor {
+  	// 在初始化之前工作
+     Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException;
+  	// :在初始化之后工作
+     Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException;
+  
+  }
+  ```
+  
+  ```java
+  public class MyBeanPostProcessor implements BeanPostProcessor {
+  
+     @Override
+     public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
+        System.out.println("postProcessBeforeInitialization..."+beanName+"=>"+bean);
+        return bean;
+     }
+  
+     @Override
+     public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
+        System.out.println("postProcessAfterInitialization..."+beanName+"=>"+bean);
+        return bean;
+     }
+  
+  }
+  ```
+  
+  
